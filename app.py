@@ -14,7 +14,6 @@ import streamlit as st
 import yfinance as yf
 from streamlit_gsheets import GSheetsConnection
 
-
 # =============================================================================
 # CONFIGURAÇÃO
 # =============================================================================
@@ -70,7 +69,9 @@ def autenticar() -> None:
     try:
         senha_correta = st.secrets["APP_PASSWORD"]
     except Exception:
-        st.error("Configure APP_PASSWORD nos Secrets do Streamlit antes de executar o Aura.")
+        st.error(
+            "Configure APP_PASSWORD nos Secrets do Streamlit antes de executar o Aura."
+        )
         st.stop()
 
     if not st.session_state.autenticado:
@@ -170,7 +171,9 @@ def normalizar_colheita(df: pd.DataFrame) -> pd.DataFrame:
     for indice, row in df.iterrows():
         valor_id = row.get("ID")
         if pd.isna(valor_id) or not str(valor_id).strip():
-            base = "|".join(str(row.get(c, "")) for c in ["Data", "Ativo", "Tipo", "Valor"])
+            base = "|".join(
+                str(row.get(c, "")) for c in ["Data", "Ativo", "Tipo", "Valor"]
+            )
             digest = hashlib.sha256(f"{indice}|{base}".encode("utf-8")).hexdigest()[:16]
             ids.append(f"LEG-{digest}")
         else:
@@ -190,17 +193,27 @@ def preparar_gravacao(df: pd.DataFrame, tipo: str) -> pd.DataFrame:
     if tipo == "carteira":
         resultado = resultado[COLUNAS_CARTEIRA]
         resultado["Data_Aporte"] = resultado["Data_Aporte"].apply(
-            lambda valor: valor.strftime("%Y-%m-%d") if isinstance(valor, (date, datetime)) else ""
+            lambda valor: (
+                valor.strftime("%Y-%m-%d")
+                if isinstance(valor, (date, datetime))
+                else ""
+            )
         )
     else:
         resultado = resultado[COLUNAS_COLHEITA]
         resultado["Data"] = resultado["Data"].apply(
-            lambda valor: valor.strftime("%Y-%m-%d") if isinstance(valor, (date, datetime)) else ""
+            lambda valor: (
+                valor.strftime("%Y-%m-%d")
+                if isinstance(valor, (date, datetime))
+                else ""
+            )
         )
     return resultado.where(pd.notna(resultado), "")
 
 
-def gravar_aba(conn: GSheetsConnection, nome_aba: str, df: pd.DataFrame, tipo: str) -> None:
+def gravar_aba(
+    conn: GSheetsConnection, nome_aba: str, df: pd.DataFrame, tipo: str
+) -> None:
     """Atualiza a aba somente com DataFrame já lido com sucesso nesta sessão."""
     dados = preparar_gravacao(df, tipo)
     try:
@@ -215,7 +228,9 @@ def gravar_aba(conn: GSheetsConnection, nome_aba: str, df: pd.DataFrame, tipo: s
 # API OFICIAL DO BANCO CENTRAL — SGS
 # =============================================================================
 @st.cache_data(ttl=24 * 60 * 60, show_spinner=False)
-def buscar_serie_bcb(codigo: int, data_inicio_iso: str, data_fim_iso: str) -> pd.DataFrame:
+def buscar_serie_bcb(
+    codigo: int, data_inicio_iso: str, data_fim_iso: str
+) -> pd.DataFrame:
     """Consulta série diária no SGS, em blocos inferiores ao limite de 10 anos."""
     inicio = date.fromisoformat(data_inicio_iso)
     fim = date.fromisoformat(data_fim_iso)
@@ -239,7 +254,9 @@ def buscar_serie_bcb(codigo: int, data_inicio_iso: str, data_fim_iso: str) -> pd
             resposta.raise_for_status()
             payload = resposta.json()
         except (requests.RequestException, ValueError) as exc:
-            raise ErroDadosBCB(f"Falha na consulta da série SGS {codigo}: {exc}") from exc
+            raise ErroDadosBCB(
+                f"Falha na consulta da série SGS {codigo}: {exc}"
+            ) from exc
 
         if not isinstance(payload, list):
             raise ErroDadosBCB(f"Resposta inesperada da série SGS {codigo}.")
@@ -248,7 +265,9 @@ def buscar_serie_bcb(codigo: int, data_inicio_iso: str, data_fim_iso: str) -> pd
             bloco = pd.DataFrame(payload)
             if not {"data", "valor"}.issubset(bloco.columns):
                 raise ErroDadosBCB(f"Formato inesperado na série SGS {codigo}.")
-            bloco["Data"] = pd.to_datetime(bloco["data"], format="%d/%m/%Y", errors="coerce").dt.date
+            bloco["Data"] = pd.to_datetime(
+                bloco["data"], format="%d/%m/%Y", errors="coerce"
+            ).dt.date
             # O SGS pode entregar decimal com vírgula ou ponto.
             bloco["Taxa"] = pd.to_numeric(
                 bloco["valor"].astype(str).str.replace(",", ".", regex=False),
@@ -262,7 +281,11 @@ def buscar_serie_bcb(codigo: int, data_inicio_iso: str, data_fim_iso: str) -> pd
         return pd.DataFrame(columns=["Data", "Taxa"])
 
     resultado = pd.concat(partes, ignore_index=True)
-    return resultado.drop_duplicates(subset=["Data"]).sort_values("Data").reset_index(drop=True)
+    return (
+        resultado.drop_duplicates(subset=["Data"])
+        .sort_values("Data")
+        .reset_index(drop=True)
+    )
 
 
 def fator_acumulado_indice(
@@ -288,11 +311,16 @@ def fator_acumulado_indice(
     percentual = max(float(percentual_indice), 0.0) / 100.0
     fatores = 1.0 + (serie["Taxa"].astype(float) / 100.0) * percentual
     fator = float(math.prod(fatores.tolist()))
-    return fator, f"Estimativa bruta por {indexador}; última observação: {serie['Data'].max():%d/%m/%Y}"
+    return (
+        fator,
+        f"Estimativa bruta por {indexador}; última observação: {serie['Data'].max():%d/%m/%Y}",
+    )
 
 
 @st.cache_data(ttl=4 * 60 * 60, show_spinner=False)
-def cotacao_brl_por_usd(data_referencia_iso: str) -> tuple[Optional[float], Optional[str]]:
+def cotacao_brl_por_usd(
+    data_referencia_iso: str,
+) -> tuple[Optional[float], Optional[str]]:
     """Série SGS 1: câmbio USD venda, em BRL por USD."""
     fim = date.fromisoformat(data_referencia_iso)
     inicio = fim - timedelta(days=20)
@@ -307,7 +335,9 @@ def cotacao_brl_por_usd(data_referencia_iso: str) -> tuple[Optional[float], Opti
 # COTAÇÕES DE MERCADO
 # =============================================================================
 @st.cache_data(ttl=15 * 60, show_spinner=False)
-def buscar_cotacao_yahoo(ativo: str, classe: str) -> tuple[Optional[float], Optional[str], str]:
+def buscar_cotacao_yahoo(
+    ativo: str, classe: str
+) -> tuple[Optional[float], Optional[str], str]:
     ativo = str(ativo).strip().upper()
     if not ativo:
         return None, None, "Código do ativo vazio"
@@ -353,7 +383,9 @@ def calcular_carteira(df_origem: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]
     )
     invalidos = int((~validos).sum())
     if invalidos:
-        avisos.append(f"{invalidos} lançamento(s) têm ativo, quantidade ou preço inválido e foram excluídos dos cálculos.")
+        avisos.append(
+            f"{invalidos} lançamento(s) têm ativo, quantidade ou preço inválido e foram excluídos dos cálculos."
+        )
     df = df.loc[validos].copy()
     if df.empty:
         return df, avisos
@@ -390,12 +422,17 @@ def calcular_carteira(df_origem: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]
             percentual_bruto = row["Percentual_Indice"]
             percentual = 100.0 if pd.isna(percentual_bruto) else float(percentual_bruto)
             if pd.isna(aporte_data):
-                fator, status = None, "Data do aporte ausente; informe a data para calcular"
+                fator, status = (
+                    None,
+                    "Data do aporte ausente; informe a data para calcular",
+                )
             elif indexador in ("CDI", "Selic"):
                 chave = (aporte_data.isoformat(), indexador, percentual)
                 if chave not in cache_indices:
                     try:
-                        cache_indices[chave] = fator_acumulado_indice(aporte_data, hoje, indexador, percentual)
+                        cache_indices[chave] = fator_acumulado_indice(
+                            aporte_data, hoje, indexador, percentual
+                        )
                     except ErroDadosBCB as exc:
                         cache_indices[chave] = (None, str(exc))
                 fator, status = cache_indices[chave]
@@ -413,7 +450,9 @@ def calcular_carteira(df_origem: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]
             df.at[indice, "Preco_Atual"] = preco_atual
             df.at[indice, "Saldo_Atual"] = saldo
             df.at[indice, "Lucro_R$"] = saldo - total_aplicado
-            df.at[indice, "Lucro_%"] = ((saldo / total_aplicado) - 1.0) * 100.0 if total_aplicado else 0.0
+            df.at[indice, "Lucro_%"] = (
+                ((saldo / total_aplicado) - 1.0) * 100.0 if total_aplicado else 0.0
+            )
             df.at[indice, "Status_Cotacao"] = status
             df.at[indice, "Data_Cotacao"] = hoje.isoformat()
             continue
@@ -430,7 +469,9 @@ def calcular_carteira(df_origem: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]
 
         if classe == "Exterior":
             if fx_atual is None:
-                df.at[indice, "Status_Cotacao"] = "Cotação em USD, mas câmbio USD/BRL indisponível"
+                df.at[indice, "Status_Cotacao"] = (
+                    "Cotação em USD, mas câmbio USD/BRL indisponível"
+                )
                 continue
             cotacao *= fx_atual
             status += f" • USD/BRL {fx_atual:.4f} ({fx_data})"
@@ -439,7 +480,9 @@ def calcular_carteira(df_origem: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]
         df.at[indice, "Preco_Atual"] = float(cotacao)
         df.at[indice, "Saldo_Atual"] = saldo
         df.at[indice, "Lucro_R$"] = saldo - total_aplicado
-        df.at[indice, "Lucro_%"] = ((float(cotacao) / preco_medio) - 1.0) * 100.0 if preco_medio else 0.0
+        df.at[indice, "Lucro_%"] = (
+            ((float(cotacao) / preco_medio) - 1.0) * 100.0 if preco_medio else 0.0
+        )
         df.at[indice, "Data_Cotacao"] = data_cotacao or ""
         df.at[indice, "Status_Cotacao"] = status
 
@@ -461,13 +504,10 @@ def consolidar_ativos(df_calculado: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     df["Ativo_Grupo"] = df["Ativo"].astype(str).str.strip().str.upper()
-    resumo = (
-        df.groupby(["Ativo_Grupo", "Classe"], as_index=False)
-        .agg(
-            Quantidade=("Quantidade", "sum"),
-            Total_Aplicado=("Total_Aplicado", "sum"),
-            Saldo_Atual=("Saldo_Atual", "sum"),
-        )
+    resumo = df.groupby(["Ativo_Grupo", "Classe"], as_index=False).agg(
+        Quantidade=("Quantidade", "sum"),
+        Total_Aplicado=("Total_Aplicado", "sum"),
+        Saldo_Atual=("Saldo_Atual", "sum"),
     )
     resumo["Preco_Medio_Ponderado"] = resumo.apply(
         lambda r: r["Total_Aplicado"] / r["Quantidade"] if r["Quantidade"] else 0.0,
@@ -475,7 +515,11 @@ def consolidar_ativos(df_calculado: pd.DataFrame) -> pd.DataFrame:
     )
     resumo["Lucro_R$"] = resumo["Saldo_Atual"] - resumo["Total_Aplicado"]
     resumo["Lucro_%"] = resumo.apply(
-        lambda r: (r["Lucro_R$"] / r["Total_Aplicado"] * 100.0) if r["Total_Aplicado"] else 0.0,
+        lambda r: (
+            (r["Lucro_R$"] / r["Total_Aplicado"] * 100.0)
+            if r["Total_Aplicado"]
+            else 0.0
+        ),
         axis=1,
     )
     return resumo.sort_values(["Classe", "Ativo_Grupo"]).reset_index(drop=True)
@@ -492,11 +536,27 @@ def encontrar_duplicados(df: pd.DataFrame) -> pd.DataFrame:
     copia["Quantidade_Comparacao"] = copia["Quantidade"].round(8)
     copia["Preco_Comparacao"] = copia["Preco_Medio"].round(8)
     chaves = [
-        "Ativo", "Classe", "Data_Comparacao", "Quantidade_Comparacao",
-        "Preco_Comparacao", "Indexador", "Percentual_Indice",
+        "Ativo",
+        "Classe",
+        "Data_Comparacao",
+        "Quantidade_Comparacao",
+        "Preco_Comparacao",
+        "Indexador",
+        "Percentual_Indice",
     ]
     contagem = copia.groupby(chaves, dropna=False)["ID"].transform("size")
-    return copia.loc[contagem > 1, ["ID", "Data_Aporte", "Ativo", "Classe", "Quantidade", "Preco_Medio", "Indexador"]].copy()
+    return copia.loc[
+        contagem > 1,
+        [
+            "ID",
+            "Data_Aporte",
+            "Ativo",
+            "Classe",
+            "Quantidade",
+            "Preco_Medio",
+            "Indexador",
+        ],
+    ].copy()
 
 
 def moeda_br(valor: Optional[float]) -> str:
@@ -507,7 +567,9 @@ def moeda_br(valor: Optional[float]) -> str:
     return f"R$ {texto}"
 
 
-def formatar_tabela(df: pd.DataFrame, mapa: dict[str, str]) -> pd.io.formats.style.Styler:
+def formatar_tabela(
+    df: pd.DataFrame, mapa: dict[str, str]
+) -> pd.io.formats.style.Styler:
     return df.style.format(mapa, na_rep="—")
 
 
@@ -546,7 +608,9 @@ with st.sidebar:
         st.session_state.autenticado = False
         st.rerun()
 
-abas = st.tabs(["📊 Resumo", "🌱 Farms", "🌾 Colheita", "➕ Lançar", "🧰 Gerenciar aportes"])
+abas = st.tabs(
+    ["📊 Resumo", "🌱 Farms", "🌾 Colheita", "➕ Lançar", "🧰 Gerenciar aportes"]
+)
 aba_resumo, aba_farms, aba_colheita, aba_lancar, aba_gerenciar = abas
 
 
@@ -559,24 +623,42 @@ with aba_resumo:
             st.warning(aviso)
 
     if df_calculado.empty:
-        st.info("Sua carteira ainda não possui aportes válidos. Use a aba **Lançar** para cadastrar o primeiro ativo.")
+        st.info(
+            "Sua carteira ainda não possui aportes válidos. Use a aba **Lançar** para cadastrar o primeiro ativo."
+        )
     else:
         total_aplicado = float(df_calculado["Total_Aplicado"].sum())
-        saldo_disponivel = float(df_calculado["Saldo_Atual"].sum(min_count=1)) if df_calculado["Saldo_Atual"].notna().any() else 0.0
+        saldo_disponivel = (
+            float(df_calculado["Saldo_Atual"].sum(min_count=1))
+            if df_calculado["Saldo_Atual"].notna().any()
+            else 0.0
+        )
         linhas_sem_cotacao = int(df_calculado["Saldo_Atual"].isna().sum())
         saldo_conhecido = float(df_calculado["Saldo_Atual"].sum(skipna=True))
         lucro_conhecido = saldo_conhecido - float(
-            df_calculado.loc[df_calculado["Saldo_Atual"].notna(), "Total_Aplicado"].sum()
+            df_calculado.loc[
+                df_calculado["Saldo_Atual"].notna(), "Total_Aplicado"
+            ].sum()
         )
         aplicado_com_cotacao = float(
-            df_calculado.loc[df_calculado["Saldo_Atual"].notna(), "Total_Aplicado"].sum()
+            df_calculado.loc[
+                df_calculado["Saldo_Atual"].notna(), "Total_Aplicado"
+            ].sum()
         )
-        rentabilidade_conhecida = (lucro_conhecido / aplicado_com_cotacao * 100.0) if aplicado_com_cotacao else 0.0
+        rentabilidade_conhecida = (
+            (lucro_conhecido / aplicado_com_cotacao * 100.0)
+            if aplicado_com_cotacao
+            else 0.0
+        )
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Patrimônio com valor calculado", moeda_br(saldo_conhecido))
         c2.metric("Total aplicado (linhas calculadas)", moeda_br(aplicado_com_cotacao))
-        c3.metric("Resultado calculado", moeda_br(lucro_conhecido), f"{rentabilidade_conhecida:+.2f}%")
+        c3.metric(
+            "Resultado calculado",
+            moeda_br(lucro_conhecido),
+            f"{rentabilidade_conhecida:+.2f}%",
+        )
 
         if linhas_sem_cotacao:
             st.warning(
@@ -585,7 +667,9 @@ with aba_resumo:
             )
 
         if not df_consolidado.empty:
-            grafico = df_consolidado.groupby("Classe", as_index=False)["Saldo_Atual"].sum()
+            grafico = df_consolidado.groupby("Classe", as_index=False)[
+                "Saldo_Atual"
+            ].sum()
             fig = px.pie(
                 grafico,
                 values="Saldo_Atual",
@@ -610,23 +694,28 @@ with aba_farms:
     if df_consolidado.empty:
         st.info("Ainda não há posições com saldo atualizado.")
     else:
-        exibicao = df_consolidado.rename(columns={
-            "Ativo_Grupo": "Ativo",
-            "Preco_Medio_Ponderado": "Preço Médio Ponderado",
-            "Total_Aplicado": "Total Aplicado",
-            "Saldo_Atual": "Saldo Atual",
-            "Lucro_R$": "Resultado (R$)",
-            "Lucro_%": "Resultado (%)",
-        })
+        exibicao = df_consolidado.rename(
+            columns={
+                "Ativo_Grupo": "Ativo",
+                "Preco_Medio_Ponderado": "Preço Médio Ponderado",
+                "Total_Aplicado": "Total Aplicado",
+                "Saldo_Atual": "Saldo Atual",
+                "Lucro_R$": "Resultado (R$)",
+                "Lucro_%": "Resultado (%)",
+            }
+        )
         st.dataframe(
-            formatar_tabela(exibicao, {
-                "Quantidade": "{:,.6f}",
-                "Preço Médio Ponderado": "R$ {:,.4f}",
-                "Total Aplicado": "R$ {:,.2f}",
-                "Saldo Atual": "R$ {:,.2f}",
-                "Resultado (R$)": "R$ {:+,.2f}",
-                "Resultado (%)": "{:+.2f}%",
-            }),
+            formatar_tabela(
+                exibicao,
+                {
+                    "Quantidade": "{:,.6f}",
+                    "Preço Médio Ponderado": "R$ {:,.4f}",
+                    "Total Aplicado": "R$ {:,.2f}",
+                    "Saldo Atual": "R$ {:,.2f}",
+                    "Resultado (R$)": "R$ {:+,.2f}",
+                    "Resultado (%)": "{:+.2f}%",
+                },
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -636,29 +725,53 @@ with aba_farms:
     if df_calculado.empty:
         st.info("Nenhum aporte válido encontrado.")
     else:
-        detalhes = df_calculado[[
-            "Data_Aporte", "Ativo", "Classe", "Quantidade", "Preco_Medio",
-            "Total_Aplicado", "Preco_Atual", "Saldo_Atual", "Lucro_R$", "Lucro_%", "Status_Cotacao",
-        ]].copy()
+        detalhes = df_calculado[
+            [
+                "Data_Aporte",
+                "Ativo",
+                "Classe",
+                "Quantidade",
+                "Preco_Medio",
+                "Total_Aplicado",
+                "Preco_Atual",
+                "Saldo_Atual",
+                "Lucro_R$",
+                "Lucro_%",
+                "Status_Cotacao",
+            ]
+        ].copy()
         detalhes["Data_Aporte"] = detalhes["Data_Aporte"].apply(
-            lambda x: x.strftime("%d/%m/%Y") if isinstance(x, (date, datetime)) else "Sem data"
+            lambda x: (
+                x.strftime("%d/%m/%Y")
+                if isinstance(x, (date, datetime))
+                else "Sem data"
+            )
         )
-        detalhes = detalhes.rename(columns={
-            "Data_Aporte": "Data", "Preco_Medio": "Preço Médio do Lote",
-            "Total_Aplicado": "Total Aplicado", "Preco_Atual": "Preço Atual",
-            "Saldo_Atual": "Saldo Atual", "Lucro_R$": "Resultado (R$)",
-            "Lucro_%": "Resultado (%)", "Status_Cotacao": "Status da atualização",
-        })
+        detalhes = detalhes.rename(
+            columns={
+                "Data_Aporte": "Data",
+                "Preco_Medio": "Preço Médio do Lote",
+                "Total_Aplicado": "Total Aplicado",
+                "Preco_Atual": "Preço Atual",
+                "Saldo_Atual": "Saldo Atual",
+                "Lucro_R$": "Resultado (R$)",
+                "Lucro_%": "Resultado (%)",
+                "Status_Cotacao": "Status da atualização",
+            }
+        )
         st.dataframe(
-            formatar_tabela(detalhes, {
-                "Quantidade": "{:,.6f}",
-                "Preço Médio do Lote": "R$ {:,.4f}",
-                "Total Aplicado": "R$ {:,.2f}",
-                "Preço Atual": "R$ {:,.4f}",
-                "Saldo Atual": "R$ {:,.2f}",
-                "Resultado (R$)": "R$ {:+,.2f}",
-                "Resultado (%)": "{:+.2f}%",
-            }),
+            formatar_tabela(
+                detalhes,
+                {
+                    "Quantidade": "{:,.6f}",
+                    "Preço Médio do Lote": "R$ {:,.4f}",
+                    "Total Aplicado": "R$ {:,.2f}",
+                    "Preço Atual": "R$ {:,.4f}",
+                    "Saldo Atual": "R$ {:,.2f}",
+                    "Resultado (R$)": "R$ {:+,.2f}",
+                    "Resultado (%)": "{:+.2f}%",
+                },
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -674,15 +787,29 @@ with aba_farms:
 # =============================================================================
 with aba_colheita:
     if df_colheita.empty:
-        st.info("Nenhuma colheita registrada ainda. Use a aba Lançar para registrar rendimentos.")
+        st.info(
+            "Nenhuma colheita registrada ainda. Use a aba Lançar para registrar rendimentos."
+        )
     else:
-        validos_colheita = df_colheita[df_colheita["Valor"].notna() & df_colheita["Data"].notna()].copy()
-        total_colhido = float(validos_colheita["Valor"].sum()) if not validos_colheita.empty else 0.0
+        validos_colheita = df_colheita[
+            df_colheita["Valor"].notna() & df_colheita["Data"].notna()
+        ].copy()
+        total_colhido = (
+            float(validos_colheita["Valor"].sum())
+            if not validos_colheita.empty
+            else 0.0
+        )
         st.metric("Total colhido (proventos registrados)", moeda_br(total_colhido))
 
         if not validos_colheita.empty:
-            validos_colheita["Mes"] = pd.to_datetime(validos_colheita["Data"]).dt.strftime("%Y-%m")
-            mensal = validos_colheita.groupby("Mes", as_index=False)["Valor"].sum().sort_values("Mes")
+            validos_colheita["Mes"] = pd.to_datetime(
+                validos_colheita["Data"]
+            ).dt.strftime("%Y-%m")
+            mensal = (
+                validos_colheita.groupby("Mes", as_index=False)["Valor"]
+                .sum()
+                .sort_values("Mes")
+            )
             fig_bar = px.bar(
                 mensal,
                 x="Mes",
@@ -691,12 +818,19 @@ with aba_colheita:
                 title="Evolução mensal da colheita (R$)",
                 color_discrete_sequence=["#77DD77"],
             )
-            fig_bar.update_layout(margin=dict(t=40, b=20, l=20, r=20), height=340, xaxis_title="", yaxis_title="R$")
+            fig_bar.update_layout(
+                margin=dict(t=40, b=20, l=20, r=20),
+                height=340,
+                xaxis_title="",
+                yaxis_title="R$",
+            )
             st.plotly_chart(fig_bar, use_container_width=True)
 
             st.subheader("Histórico de recebimentos")
             historico = validos_colheita.sort_values("Data", ascending=False).copy()
-            historico["Data"] = historico["Data"].apply(lambda x: x.strftime("%d/%m/%Y"))
+            historico["Data"] = historico["Data"].apply(
+                lambda x: x.strftime("%d/%m/%Y")
+            )
             historico = historico[["Data", "Ativo", "Tipo", "Valor"]]
             st.dataframe(
                 formatar_tabela(historico, {"Valor": "R$ {:,.2f}"}),
@@ -718,12 +852,18 @@ with aba_lancar:
     if tipo_lancamento == "Novo aporte/compra":
         st.subheader("Registrar aporte")
         with st.form("form_aporte", clear_on_submit=True):
-            ativo = st.text_input("Código ou nome do ativo (ex.: PETR4, MXRF11, BTC, AAPL, CDB Banco X)")
+            ativo = st.text_input(
+                "Código ou nome do ativo (ex.: PETR4, MXRF11, BTC, AAPL, CDB Banco X)"
+            )
             classe = st.selectbox("Classe", CLASSES)
-            data_aporte = st.date_input("Data do aporte", value=hoje_brasil(), max_value=hoje_brasil())
+            data_aporte = st.date_input(
+                "Data do aporte", value=hoje_brasil(), max_value=hoje_brasil()
+            )
 
             if classe == "Renda Fixa":
-                valor_aplicado = st.number_input("Valor aplicado (R$)", min_value=0.01, value=1000.0, step=100.0)
+                valor_aplicado = st.number_input(
+                    "Valor aplicado (R$)", min_value=0.01, value=1000.0, step=100.0
+                )
                 indexador = st.selectbox("Indexador", INDEXADORES, index=1)
                 percentual = st.number_input(
                     "Percentual do indexador (%)",
@@ -741,9 +881,20 @@ with aba_lancar:
             else:
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    quantidade = st.number_input("Quantidade", min_value=0.000001, value=1.0, step=1.0, format="%.6f")
+                    quantidade = st.number_input(
+                        "Quantidade",
+                        min_value=0.000001,
+                        value=1.0,
+                        step=1.0,
+                        format="%.6f",
+                    )
                 with col_b:
-                    preco_pago = st.number_input("Preço pago por unidade (R$)", min_value=0.0001, value=10.0, step=1.0)
+                    preco_pago = st.number_input(
+                        "Preço pago por unidade (R$)",
+                        min_value=0.0001,
+                        value=10.0,
+                        step=1.0,
+                    )
                 indexador = "Manual"
                 percentual = 100.0
                 st.caption(
@@ -751,15 +902,21 @@ with aba_lancar:
                 )
 
             observacoes = st.text_input("Observações (opcional)")
-            permitir_semelhante = st.checkbox("Permitir mesmo assim se já existir aporte idêntico", value=False)
-            salvar_aporte = st.form_submit_button("Salvar aporte", type="primary", use_container_width=True)
+            permitir_semelhante = st.checkbox(
+                "Permitir mesmo assim se já existir aporte idêntico", value=False
+            )
+            salvar_aporte = st.form_submit_button(
+                "Salvar aporte", type="primary", use_container_width=True
+            )
 
         if salvar_aporte:
             ativo_limpo = ativo.strip().upper()
             if not ativo_limpo:
                 st.error("Informe o código ou nome do ativo.")
             elif quantidade <= 0 or preco_pago <= 0:
-                st.error("Quantidade e preço/valor aplicado precisam ser maiores que zero.")
+                st.error(
+                    "Quantidade e preço/valor aplicado precisam ser maiores que zero."
+                )
             else:
                 novo = {
                     "ID": str(uuid.uuid4()),
@@ -776,7 +933,9 @@ with aba_lancar:
                 teste = pd.concat([df_carteira, candidato], ignore_index=True)
                 duplicados = encontrar_duplicados(teste)
                 novo_id = novo["ID"]
-                duplicado_novo = not duplicados.empty and duplicados["ID"].eq(novo_id).any()
+                duplicado_novo = (
+                    not duplicados.empty and duplicados["ID"].eq(novo_id).any()
+                )
 
                 if duplicado_novo and not permitir_semelhante:
                     st.error(
@@ -794,14 +953,27 @@ with aba_lancar:
     else:
         st.subheader("Registrar colheita")
         with st.form("form_colheita", clear_on_submit=True):
-            data_recebimento = st.date_input("Data do recebimento", value=hoje_brasil(), max_value=hoje_brasil())
+            data_recebimento = st.date_input(
+                "Data do recebimento", value=hoje_brasil(), max_value=hoje_brasil()
+            )
             ativo_recebedor = st.text_input("Ativo pagador (ex.: MXRF11, PETR4, CDB)")
             tipo_provento = st.selectbox(
                 "Tipo de provento",
-                ["Dividendo", "Rendimento FII", "JCP", "Rendimento Renda Fixa", "Staking/Cripto", "Outro"],
+                [
+                    "Dividendo",
+                    "Rendimento FII",
+                    "JCP",
+                    "Rendimento Renda Fixa",
+                    "Staking/Cripto",
+                    "Outro",
+                ],
             )
-            valor_recebido = st.number_input("Valor líquido recebido (R$)", min_value=0.01, value=10.0, step=5.0)
-            salvar_colheita = st.form_submit_button("Salvar colheita", type="primary", use_container_width=True)
+            valor_recebido = st.number_input(
+                "Valor líquido recebido (R$)", min_value=0.01, value=10.0, step=5.0
+            )
+            salvar_colheita = st.form_submit_button(
+                "Salvar colheita", type="primary", use_container_width=True
+            )
 
         if salvar_colheita:
             ativo_limpo = ativo_recebedor.strip().upper()
@@ -810,17 +982,23 @@ with aba_lancar:
             elif valor_recebido <= 0:
                 st.error("O valor recebido precisa ser maior que zero.")
             else:
-                novo = pd.DataFrame([{
-                    "ID": str(uuid.uuid4()),
-                    "Data": data_recebimento,
-                    "Ativo": ativo_limpo,
-                    "Tipo": tipo_provento,
-                    "Valor": float(valor_recebido),
-                }])
+                novo = pd.DataFrame(
+                    [
+                        {
+                            "ID": str(uuid.uuid4()),
+                            "Data": data_recebimento,
+                            "Ativo": ativo_limpo,
+                            "Tipo": tipo_provento,
+                            "Valor": float(valor_recebido),
+                        }
+                    ]
+                )
                 teste = pd.concat([df_colheita, novo], ignore_index=True)
                 try:
                     gravar_aba(conn, SHEET_COLHEITA, teste, "colheita")
-                    st.success(f"Colheita de {moeda_br(valor_recebido)} ({ativo_limpo}) salva.")
+                    st.success(
+                        f"Colheita de {moeda_br(valor_recebido)} ({ativo_limpo}) salva."
+                    )
                     st.rerun()
                 except Exception as exc:
                     st.error(str(exc))
@@ -841,27 +1019,54 @@ with aba_gerenciar:
     else:
         duplicados = encontrar_duplicados(df_carteira)
         if duplicados.empty:
-            st.success("Não foram encontrados aportes idênticos pelos campos comparados.")
+            st.success(
+                "Não foram encontrados aportes idênticos pelos campos comparados."
+            )
         else:
-            st.error(f"Foram encontrados {len(duplicados)} lançamento(s) em grupos potencialmente duplicados.")
+            st.error(
+                f"Foram encontrados {len(duplicados)} lançamento(s) em grupos potencialmente duplicados."
+            )
             tabela_dup = duplicados.copy()
             tabela_dup["Data_Aporte"] = tabela_dup["Data_Aporte"].apply(
-                lambda x: x.strftime("%d/%m/%Y") if isinstance(x, (date, datetime)) else "Sem data"
+                lambda x: (
+                    x.strftime("%d/%m/%Y")
+                    if isinstance(x, (date, datetime))
+                    else "Sem data"
+                )
             )
-            tabela_dup = tabela_dup.rename(columns={
-                "Data_Aporte": "Data", "Preco_Medio": "Preço pago", "Quantidade": "Quantidade"
-            })
+            tabela_dup = tabela_dup.rename(
+                columns={
+                    "Data_Aporte": "Data",
+                    "Preco_Medio": "Preço pago",
+                    "Quantidade": "Quantidade",
+                }
+            )
             st.dataframe(
-                formatar_tabela(tabela_dup[["ID", "Data", "Ativo", "Classe", "Quantidade", "Preço pago", "Indexador"]], {
-                    "Quantidade": "{:,.6f}", "Preço pago": "R$ {:,.4f}"
-                }),
+                formatar_tabela(
+                    tabela_dup[
+                        [
+                            "ID",
+                            "Data",
+                            "Ativo",
+                            "Classe",
+                            "Quantidade",
+                            "Preço pago",
+                            "Indexador",
+                        ]
+                    ],
+                    {"Quantidade": "{:,.6f}", "Preço pago": "R$ {:,.4f}"},
+                ),
                 use_container_width=True,
                 hide_index=True,
             )
 
         st.divider()
         st.markdown("**Backup dos aportes**")
-        backup_csv = preparar_gravacao(df_carteira, "carteira").to_csv(index=False).encode("utf-8-sig")
+        backup_csv = (
+            preparar_gravacao(df_carteira, "carteira")
+            .to_csv(index=False)
+            .encode("utf-8-sig")
+        )
         st.download_button(
             "Baixar carteira em CSV antes de alterar",
             data=backup_csv,
@@ -876,8 +1081,14 @@ with aba_gerenciar:
         if not renda_fixa.empty:
             rf_rotulos = {}
             for _, linha in renda_fixa.iterrows():
-                dt_txt = linha["Data_Aporte"].strftime("%d/%m/%Y") if isinstance(linha["Data_Aporte"], (date, datetime)) else "data não cadastrada"
-                rf_rotulos[linha["ID"]] = f"{linha['Ativo']} • {dt_txt} • {moeda_br(linha['Quantidade'] * linha['Preco_Medio'])} • {linha['ID'][:12]}"
+                dt_txt = (
+                    linha["Data_Aporte"].strftime("%d/%m/%Y")
+                    if isinstance(linha["Data_Aporte"], (date, datetime))
+                    else "data não cadastrada"
+                )
+                rf_rotulos[linha["ID"]] = (
+                    f"{linha['Ativo']} • {dt_txt} • {moeda_br(linha['Quantidade'] * linha['Preco_Medio'])} • {linha['ID'][:12]}"
+                )
             rf_id = st.selectbox(
                 "Selecione um aporte de renda fixa para revisar",
                 options=renda_fixa["ID"].tolist(),
@@ -886,29 +1097,51 @@ with aba_gerenciar:
             )
             rf_row = renda_fixa.loc[renda_fixa["ID"].eq(rf_id)].iloc[0]
             data_rf_cadastrada = isinstance(rf_row["Data_Aporte"], (date, datetime))
-            data_rf_atual = rf_row["Data_Aporte"] if data_rf_cadastrada else hoje_brasil()
-            indice_rf = INDEXADORES.index(rf_row["Indexador"]) if rf_row["Indexador"] in INDEXADORES else 0
+            data_rf_atual = (
+                rf_row["Data_Aporte"] if data_rf_cadastrada else hoje_brasil()
+            )
+            indice_rf = (
+                INDEXADORES.index(rf_row["Indexador"])
+                if rf_row["Indexador"] in INDEXADORES
+                else 0
+            )
             with st.form("form_ajustar_renda_fixa"):
                 if not data_rf_cadastrada:
-                    st.warning("Este registro antigo não possui data. Não mantenha a data de hoje por engano: selecione a data original da aplicação.")
-                nova_data_rf = st.date_input("Data original do aporte", value=data_rf_atual, max_value=hoje_brasil())
+                    st.warning(
+                        "Este registro antigo não possui data. Não mantenha a data de hoje por engano: selecione a data original da aplicação."
+                    )
+                nova_data_rf = st.date_input(
+                    "Data original do aporte",
+                    value=data_rf_atual,
+                    max_value=hoje_brasil(),
+                )
                 confirmar_data_real = st.checkbox(
                     "Confirmo que a data selecionada é a data original do aporte.",
                     value=data_rf_cadastrada,
                     disabled=data_rf_cadastrada,
                 )
-                novo_indexador_rf = st.selectbox("Indexador do contrato", INDEXADORES, index=indice_rf)
+                novo_indexador_rf = st.selectbox(
+                    "Indexador do contrato", INDEXADORES, index=indice_rf
+                )
                 novo_pct_rf = st.number_input(
                     "Percentual do indexador (%)",
                     min_value=0.0,
                     max_value=500.0,
-                    value=(100.0 if pd.isna(rf_row["Percentual_Indice"]) else float(rf_row["Percentual_Indice"])),
+                    value=(
+                        100.0
+                        if pd.isna(rf_row["Percentual_Indice"])
+                        else float(rf_row["Percentual_Indice"])
+                    ),
                     step=1.0,
                 )
-                salvar_ajuste_rf = st.form_submit_button("Salvar dados de renda fixa", use_container_width=True)
+                salvar_ajuste_rf = st.form_submit_button(
+                    "Salvar dados de renda fixa", use_container_width=True
+                )
             if salvar_ajuste_rf:
                 if not confirmar_data_real:
-                    st.error("Confirme a data original antes de salvar o aporte antigo.")
+                    st.error(
+                        "Confirme a data original antes de salvar o aporte antigo."
+                    )
                 else:
                     atualizado = df_carteira.copy()
                     mascara_rf = atualizado["ID"].eq(rf_id)
@@ -926,20 +1159,41 @@ with aba_gerenciar:
 
         st.divider()
         st.markdown("**Todos os aportes registrados**")
-        tabela_todos = df_carteira[[
-            "ID", "Data_Aporte", "Ativo", "Classe", "Quantidade", "Preco_Medio", "Indexador", "Percentual_Indice"
-        ]].copy()
+        tabela_todos = df_carteira[
+            [
+                "ID",
+                "Data_Aporte",
+                "Ativo",
+                "Classe",
+                "Quantidade",
+                "Preco_Medio",
+                "Indexador",
+                "Percentual_Indice",
+            ]
+        ].copy()
         tabela_todos["Data_Aporte"] = tabela_todos["Data_Aporte"].apply(
-            lambda x: x.strftime("%d/%m/%Y") if isinstance(x, (date, datetime)) else "Sem data"
+            lambda x: (
+                x.strftime("%d/%m/%Y")
+                if isinstance(x, (date, datetime))
+                else "Sem data"
+            )
         )
-        tabela_todos = tabela_todos.rename(columns={
-            "Data_Aporte": "Data", "Preco_Medio": "Preço pago", "Percentual_Indice": "% do índice"
-        })
+        tabela_todos = tabela_todos.rename(
+            columns={
+                "Data_Aporte": "Data",
+                "Preco_Medio": "Preço pago",
+                "Percentual_Indice": "% do índice",
+            }
+        )
         st.dataframe(tabela_todos, use_container_width=True, hide_index=True)
 
         rotulos = {}
         for _, row in df_carteira.iterrows():
-            data_txt = row["Data_Aporte"].strftime("%d/%m/%Y") if isinstance(row["Data_Aporte"], (date, datetime)) else "sem data"
+            data_txt = (
+                row["Data_Aporte"].strftime("%d/%m/%Y")
+                if isinstance(row["Data_Aporte"], (date, datetime))
+                else "sem data"
+            )
             rotulos[row["ID"]] = (
                 f"{row['Ativo']} • {row['Classe']} • {data_txt} • "
                 f"Qtd. {row['Quantidade']} • {moeda_br(row['Preco_Medio'])} • ID {row['ID'][:12]}"
@@ -950,7 +1204,9 @@ with aba_gerenciar:
             options=df_carteira["ID"].tolist(),
             format_func=lambda item_id: rotulos.get(item_id, item_id),
         )
-        confirmar_exclusao = st.checkbox("Confirmo que selecionei o aporte correto e desejo excluí-lo permanentemente.")
+        confirmar_exclusao = st.checkbox(
+            "Confirmo que selecionei o aporte correto e desejo excluí-lo permanentemente."
+        )
         if st.button(
             "🗑️ Excluir aporte selecionado",
             type="primary",
@@ -959,11 +1215,15 @@ with aba_gerenciar:
         ):
             restante = df_carteira.loc[df_carteira["ID"] != id_selecionado].copy()
             if len(restante) == len(df_carteira):
-                st.error("O ID selecionado não foi encontrado. Atualize a página e tente novamente.")
+                st.error(
+                    "O ID selecionado não foi encontrado. Atualize a página e tente novamente."
+                )
             else:
                 try:
                     gravar_aba(conn, SHEET_CARTEIRA, restante, "carteira")
-                    st.success("Aporte excluído. Os demais lançamentos foram preservados.")
+                    st.success(
+                        "Aporte excluído. Os demais lançamentos foram preservados."
+                    )
                     st.rerun()
                 except Exception as exc:
                     st.error(str(exc))
@@ -973,8 +1233,7 @@ with aba_gerenciar:
 # NOTAS METODOLÓGICAS
 # =============================================================================
 with st.expander("ℹ️ Critérios de cálculo e limitações"):
-    st.markdown(
-        """
+    st.markdown("""
         **Preço médio ponderado:** soma de (quantidade × preço pago) dividida pela quantidade total,
         agrupando o mesmo código de ativo e classe.
 
@@ -996,5 +1255,4 @@ with st.expander("ℹ️ Critérios de cálculo e limitações"):
 
         **Importante:** o cálculo é informativo e estimado. Não substitui extratos, informes da corretora,
         cálculo tributário ou preço de resgate/venda efetivo.
-        """
-    )
+        """)
